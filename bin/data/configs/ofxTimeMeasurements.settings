@@ -1,0 +1,6 @@
+keyPressed()=1|1|0
+update()=1|1|0
+update-som=1|1|0
+update-som-image=1|1|0
+draw()=1|1|0
+update-audoanalysis=1|1|0
