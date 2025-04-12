@@ -27,9 +27,8 @@ public:
   void dragEvent(ofDragInfo dragInfo) override;
   void gotMessage(ofMessage msg) override;
   
-  std::shared_ptr<ofxAudioAnalysisClient::FileClient> audioAnalysisClientPtr { std::make_shared<ofxAudioAnalysisClient::FileClient>("Jam-20240402-094851837") };
-//  std::shared_ptr<ofxAudioAnalysisClient::FileClient> audioAnalysisClientPtr { std::make_shared<ofxAudioAnalysisClient::FileClient>("Jam-20240517-155805463") };
-  std::shared_ptr<ofxAudioData::Processor> audioDataProcessorPtr { std::make_shared<ofxAudioData::Processor>(audioAnalysisClientPtr) };
+  std::shared_ptr<ofxAudioAnalysisClient::LocalGistClient> audioAnalysisClientPtr;
+  std::shared_ptr<ofxAudioData::Processor> audioDataProcessorPtr;
 
   ofxSelfOrganizingMap som;
   ofImage somImage;

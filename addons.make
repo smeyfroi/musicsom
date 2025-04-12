@@ -1,8 +1,11 @@
 ofxNetwork
 ofxOsc
 ofxHistoryPlot
+ofxGist
+ofxAudioFile
+ofxGui
+ofxSoundObjects
 ofxAudioAnalysisClient
 ofxAudioData
-ofxGui
 ofxSelfOrganizingMap
 ofxTimeMeasurements
