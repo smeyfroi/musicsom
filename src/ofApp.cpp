@@ -1,25 +1,87 @@
 #include "ofApp.h"
 #include "ofxTimeMeasurements.h"
 
-//--------------------------------------------------------------
-const int SOM_WIDTH = 64;
-const int SOM_HEIGHT = 64;
-void ofApp::setup(){
-  ofxTimeMeasurements::instance()->setEnabled(false);
+SomPalette::SomPalette(int width_, int height_, float initialLearningRate_, int numIterations_) :
+width { width_ },
+height { height_ }
+{
+  setThreadName("SomPalette");
   
-  ofSetRandomSeed(0);
-
+  som.setInitialLearningRate(initialLearningRate_);
+  som.setNumIterations(numIterations_);
+  
   double minInstance[3] = { 0, 0, 0 };
   double maxInstance[3] = { 1.0, 1.0, 1.0 };
   som.setFeaturesRange(3, minInstance, maxInstance);
-  som.setMapSize(SOM_WIDTH, SOM_HEIGHT); // can go to 3 dimensions
-  som.setInitialLearningRate(0.01);
-  som.setNumIterations(20000);
+  som.setMapSize(width, height); // can go to 3 dimensions
+  
   som.setup();
+    
+  startThread();
+}
+
+SomPalette::~SomPalette() {
+  newInstanceData.close();
+  waitForThread(true);
+}
+
+void SomPalette::addInstanceData(SomInstanceDataT& instanceData) {
+  if (isIterating()) newInstanceData.send(instanceData);
+}
+
+// TODO: Make sure we can't be overwhelmed if producer fills queue faster than we consume (e.g. could just do the SOM not the pixels)
+void SomPalette::threadedFunction() {
+  SomInstanceDataT instanceData;
+  ofPixels p;
+  p.allocate(width, height, OF_IMAGE_COLOR);
+
+  while (newInstanceData.receive(instanceData)) {
+    som.updateMap(instanceData.data());
+    for (int i = 0; i < width; i++) {
+      for (int j = 0; j < height; j++) {
+        double* c = som.getMapAt(i, j);
+        ofFloatColor col(c[0], c[1], c[2]);
+        p.setColor(i, j, col);
+      }
+    }
+    newPalettePixels.send(std::move(p));
+  }
+}
+
+void SomPalette::update() {
+  isNewPalettePixelsReady = false;
+  while (newPalettePixels.tryReceive(pixels)) {
+    isNewPalettePixelsReady = true;
+  }
+  if (isNewPalettePixelsReady) {
+    if (!paletteTexture.isAllocated()) paletteTexture.allocate(pixels);
+    paletteTexture.loadData(pixels);
+  }
+}
+
+bool SomPalette::keyPressed(int key) {
+  if (key == 'S' && paletteTexture.isAllocated()) {
+    ofPixels p;
+    paletteTexture.readToPixels(p);
+    ofSaveImage(p, ofFilePath::getUserHomeDir()+"/Documents/som/snapshot-"+ofGetTimestampString()+".png", OF_IMAGE_QUALITY_BEST);
+    return true;
+  }
+  return false;
+}
+
+void SomPalette::draw() {
+  if (paletteTexture.isAllocated()) {
+    paletteTexture.draw(0, 0, ofGetWindowWidth(), ofGetWindowHeight());
+  }
+}
+
+//--------------------------------------------------------------
+void ofApp::setup(){
+  ofxTimeMeasurements::instance()->setEnabled(false);
   
-  somImage.allocate(SOM_WIDTH, SOM_HEIGHT, OF_IMAGE_COLOR);
-  
-//    audioAnalysisClientPtr = std::make_shared<ofxAudioAnalysisClient::LocalGistClient>(ofToDataPath("violin.wav"));
+//  ofSetRandomSeed(0);
+
+    audioAnalysisClientPtr = std::make_shared<ofxAudioAnalysisClient::LocalGistClient>(ofToDataPath("violin.wav"));
 //    audioAnalysisClientPtr = std::make_shared<ofxAudioAnalysisClient::LocalGistClient>(ofToDataPath("trombone.wav"));
 //    audioAnalysisClientPtr = std::make_shared<ofxAudioAnalysisClient::LocalGistClient>(ofToDataPath("Nightsong.wav"));
 //    audioAnalysisClientPtr = std::make_shared<ofxAudioAnalysisClient::LocalGistClient>(ofToDataPath("Treganna.wav"));
@@ -35,36 +97,24 @@ void ofApp::update(){
   audioDataProcessorPtr->update();
   TS_STOP("update-audoanalysis");
 
-  if (som.getCurrentIteration() < som.getNumIterations()) {
-    TS_START("update-som");
-    float u = audioDataProcessorPtr->getNormalisedScalarValue(ofxAudioAnalysisClient::AnalysisScalar::complexSpectralDifference, 0.0, 100.0);
-    float v = audioDataProcessorPtr->getNormalisedScalarValue(ofxAudioAnalysisClient::AnalysisScalar::spectralCrest, 0.0, 100.0);
-    float w = audioDataProcessorPtr->getNormalisedScalarValue(ofxAudioAnalysisClient::AnalysisScalar::zeroCrossingRate, 0.0, 20.0);
-    
-    double instance[3] = {
-      static_cast<double>(u),
-      static_cast<double>(v),
-      static_cast<double>(w)
-    };
-    som.updateMap(instance);
-    TS_STOP("update-som");
-    
-    TS_START("update-som-image");
-    for (int i = 0; i < SOM_WIDTH; i++) {
-      for (int j = 0; j < SOM_HEIGHT; j++) {
-        double * c = som.getMapAt(i,j);
-        ofFloatColor col(c[0], c[1], c[2]);
-        somImage.setColor(i, j, col);
-      }
-    }
-    somImage.update();
-    TS_STOP("update-som-image");
-  }
+  TS_START("update-som");
+  float u = audioDataProcessorPtr->getNormalisedScalarValue(ofxAudioAnalysisClient::AnalysisScalar::complexSpectralDifference, 0.0, 100.0);
+  float v = audioDataProcessorPtr->getNormalisedScalarValue(ofxAudioAnalysisClient::AnalysisScalar::spectralCrest, 0.0, 100.0);
+  float w = audioDataProcessorPtr->getNormalisedScalarValue(ofxAudioAnalysisClient::AnalysisScalar::zeroCrossingRate, 0.0, 20.0);
+  
+  std::array<double, 3> instance {
+    static_cast<double>(u),
+    static_cast<double>(v),
+    static_cast<double>(w)
+  };
+  somPalette.addInstanceData(instance);
+  somPalette.update();
+  TS_STOP("update-som");
 }
 
 //--------------------------------------------------------------
 void ofApp::draw(){
-  somImage.draw(0, 0, ofGetWindowWidth(), ofGetWindowHeight());
+  somPalette.draw();
 }
 
 //--------------------------------------------------------------
@@ -75,9 +125,7 @@ void ofApp::exit(){
 //--------------------------------------------------------------
 void ofApp::keyPressed(int key){
   if (audioAnalysisClientPtr->keyPressed(key)) return;
-  if (key == 'S') {
-    ofSaveImage(somImage, ofFilePath::getUserHomeDir()+"/Documents/musicsom/snapshot-"+ofGetTimestampString()+".png", OF_IMAGE_QUALITY_BEST);
-  }
+  if (somPalette.keyPressed(key)) return;
 }
 
 //--------------------------------------------------------------

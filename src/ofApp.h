@@ -6,6 +6,32 @@
 #include "ofxAudioData.h"
 #include "ofxSelfOrganizingMap.h"
 
+// The doubles need to be normalised 0.0..1.0
+using SomInstanceDataT = std::array<double, 3>;
+
+class SomPalette: public ofThread {
+public:
+  SomPalette(int width_, int height_, float initialLearningRate, int numIterations);
+  ~SomPalette();
+  bool isIterating() { return som.getCurrentIteration() < som.getNumIterations(); }
+  void addInstanceData(SomInstanceDataT& instanceData);
+  void update(); // move pixels into a GL texture on main thread
+  bool keyPressed(int key);
+  void draw();
+protected:
+  void threadedFunction() override;
+private:
+  int width, height;
+  ofxSelfOrganizingMap som;
+
+  ofThreadChannel<SomInstanceDataT> newInstanceData;
+  ofThreadChannel<ofPixels> newPalettePixels;
+  bool isNewPalettePixelsReady;
+  ofPixels pixels; // non-GL, used in the threaded function
+
+  ofTexture paletteTexture;
+};
+
 class ofApp : public ofBaseApp {
   
 public:
@@ -29,7 +55,6 @@ public:
   
   std::shared_ptr<ofxAudioAnalysisClient::LocalGistClient> audioAnalysisClientPtr;
   std::shared_ptr<ofxAudioData::Processor> audioDataProcessorPtr;
-
-  ofxSelfOrganizingMap som;
-  ofImage somImage;
+  
+  SomPalette somPalette { 256, 256, 0.015, 10000 };
 };
